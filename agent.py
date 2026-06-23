@@ -3,9 +3,19 @@ import os
 from openai import OpenAI
 from tools import tools, tool_functions
 from dotenv import load_dotenv
-# get OPENAI_KEY from .env
 
 load_dotenv()
+
+class C:
+    RESET   = "\033[0m"
+    BOLD    = "\033[1m"
+    CYAN    = "\033[96m"
+    YELLOW  = "\033[93m"
+    GREEN   = "\033[92m"
+    MAGENTA = "\033[95m"
+    BLUE    = "\033[94m"
+    DIM     = "\033[2m"
+    RED     = "\033[91m"
 
 client = OpenAI(
     api_key=os.getenv("GITHUB_TOKEN"),
@@ -13,13 +23,6 @@ client = OpenAI(
 )
 
 MODEL = "gpt-4o-mini"
-
-
-# tried all of these following ,none worked as required 
-# MODEL = "openrouter/auto"
-# MODEL = "mistralai/mistral-7b-instruct:free"
-# MODEL = "meta-llama/llama-3.1-8b-instruct:free"
-# MODEL = "nex-agi/nex-n2-pro"
 
 SYSTEM_PROMPT = """You are an expert data analyst for an e-commerce company.
 You have access to a SQLite database with customers, products, and orders.
@@ -35,9 +38,6 @@ After getting query results, answer directly — do not call any more tools."""
 
 
 def run_agent(user_question: str) -> str:
-    print(f"\nQuestion: {user_question}")
-    print("-" * 50)
-
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {"role": "user", "content": user_question}
@@ -46,8 +46,6 @@ def run_agent(user_question: str) -> str:
     max_iterations = 10
 
     for i in range(max_iterations):
-        print(f"\n[Iteration {i+1}]")
-
         response = client.chat.completions.create(
             model=MODEL,
             tools=tools,
@@ -57,15 +55,9 @@ def run_agent(user_question: str) -> str:
         message = response.choices[0].message
         stop_reason = response.choices[0].finish_reason
 
-        print(f"Stop reason: {stop_reason}")
-
-        # agent is done — return final answer
         if stop_reason == "stop" or not message.tool_calls:
-            print("\n✅ Final Answer:")
             return message.content
 
-        # agent wants tools — process all tool calls
-        # append assistant's response to history
         messages.append({
             "role": "assistant",
             "content": message.content,
@@ -82,19 +74,20 @@ def run_agent(user_question: str) -> str:
             ]
         })
 
-        # run each tool and collect results
         for tool_call in message.tool_calls:
             fn_name = tool_call.function.name
             fn_args = json.loads(tool_call.function.arguments)
 
-            print(f"  → Calling: {fn_name}({fn_args})")
+            # Show tool calls with color
+            if fn_name == "get_schema":
+                print(f"  {C.MAGENTA}→ Reading database schema...{C.RESET}")
+            elif fn_name == "run_sql":
+                query = fn_args.get("query", "")
+                print(f"  {C.BLUE}→ Running SQL:{C.RESET} {C.DIM}{query}{C.RESET}")
 
             fn = tool_functions[fn_name]
             result = fn(**fn_args)
 
-            print(f"  ← Result preview: {result[:100]}...")
-
-            # send result back
             messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,
@@ -112,6 +105,7 @@ if __name__ == "__main__":
     ]
 
     for question in questions:
+        print(f"\n{C.CYAN}{C.BOLD}Q: {question}{C.RESET}")
         answer = run_agent(question)
-        print(answer)
-        print("\n" + "="*60 + "\n")
+        print(f"{C.GREEN}A: {answer}{C.RESET}")
+        print("=" * 60)
